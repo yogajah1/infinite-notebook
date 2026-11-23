@@ -1,21 +1,77 @@
-import { useState } from 'react'
-import { Tldraw, Editor } from 'tldraw'
-import { Check, Edit2, Maximize2, Minimize2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Tldraw, Editor, TLStoreSnapshot } from 'tldraw'
+import {
+  Check,
+  Edit2,
+  Maximize2,
+  Minimize2,
+  ArrowLeft,
+  CloudCheck,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react'
+import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
 
 interface NotebookCanvasProps {
   notebookId: string
   title: string
+  tags?: string[]
   onTitleChange?: (newTitle: string) => void
+  onBack?: () => void
 }
 
 export function NotebookCanvas({
   notebookId,
   title,
+  tags = [],
   onTitleChange,
+  onBack,
 }: NotebookCanvasProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [currentTitle, setCurrentTitle] = useState(title)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('saved')
+  const [initialSnapshot, setInitialSnapshot] = useState<TLStoreSnapshot | null | undefined>(undefined)
+
+  const editorRef = useRef<Editor | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sync internal title when prop changes
+  useEffect(() => {
+    setCurrentTitle(title)
+  }, [title])
+
+  // Load snapshot from IndexedDB when notebookId changes
+  useEffect(() => {
+    let isMounted = true
+    setInitialSnapshot(undefined)
+    setSaveStatus('idle')
+
+    async function loadData() {
+      try {
+        const data = await getCanvasSnapshot(notebookId)
+        if (isMounted) {
+          setInitialSnapshot((data as TLStoreSnapshot) || null)
+          setSaveStatus('saved')
+        }
+      } catch (err) {
+        console.error('Failed to load canvas data from IndexedDB:', err)
+        if (isMounted) {
+          setInitialSnapshot(null)
+          setSaveStatus('error')
+        }
+      }
+    }
+
+    loadData()
+
+    return () => {
+      isMounted = false
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [notebookId])
 
   const handleTitleSubmit = () => {
     setIsEditingTitle(false)
@@ -33,15 +89,48 @@ export function NotebookCanvas({
   }
 
   const handleMount = (editor: Editor) => {
-    // Focus the canvas editor on load
+    editorRef.current = editor
     editor.focus()
+
+    // Listen to changes in the store for auto-saving
+    const unlisten = editor.store.listen(() => {
+      setSaveStatus('saving')
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const snapshot = editor.store.getStoreSnapshot()
+          await saveCanvasSnapshot(notebookId, snapshot)
+          setSaveStatus('saved')
+        } catch (err) {
+          console.error('Auto-save to IndexedDB failed:', err)
+          setSaveStatus('error')
+        }
+      }, 1000)
+    })
+
+    return () => {
+      unlisten()
+    }
   }
 
   return (
     <div className="flex flex-col w-full h-full bg-white select-none">
-      {/* Top Bar - No Slop UI Standard: restrained, crisp borders, solid colors */}
+      {/* Top Bar - No Slop UI Standard */}
       <header className="h-12 border-b border-zinc-200 px-3 sm:px-4 flex items-center justify-between bg-white z-10 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="p-1.5 -ml-1 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors mr-1"
+              title="Kembali ke Dashboard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+
           {isEditingTitle ? (
             <div className="flex items-center gap-1">
               <input
@@ -78,12 +167,46 @@ export function NotebookCanvas({
             </div>
           )}
 
-          <span className="hidden sm:inline-flex text-[11px] font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200">
-            Tersimpan lokal
-          </span>
+          {tags.length > 0 && (
+            <div className="hidden md:flex items-center gap-1">
+              {tags.slice(0, 2).map((tag) => (
+                <span
+                  key={tag}
+                  className="text-[11px] font-medium text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right side: Save indicator & Actions */}
+        <div className="flex items-center gap-3">
+          {/* Status Indicator */}
+          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+            {saveStatus === 'saving' && (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600" />
+                <span className="hidden sm:inline">Menyimpan ke IndexedDB...</span>
+              </>
+            )}
+            {saveStatus === 'saved' && (
+              <>
+                <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden sm:inline text-zinc-600">Tersimpan lokal</span>
+              </>
+            )}
+            {saveStatus === 'error' && (
+              <>
+                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                <span className="hidden sm:inline text-red-600">Gagal menyimpan</span>
+              </>
+            )}
+          </div>
+
+          <div className="h-4 w-[1px] bg-zinc-200" />
+
           <button
             onClick={toggleFullscreen}
             className="p-1.5 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors"
@@ -94,13 +217,21 @@ export function NotebookCanvas({
         </div>
       </header>
 
-      {/* Main Canvas Area */}
-      <main className="flex-1 w-full relative overflow-hidden">
-        <Tldraw
-          persistenceKey={`notebook_${notebookId}`}
-          onMount={handleMount}
-          autoFocus
-        />
+      {/* Main Canvas Area with Key to reload when notebookId changes */}
+      <main className="flex-1 w-full relative overflow-hidden bg-zinc-50">
+        {initialSnapshot === undefined ? (
+          <div className="flex items-center justify-center w-full h-full text-zinc-500 text-sm gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />
+            <span>Memuat catatan...</span>
+          </div>
+        ) : (
+          <Tldraw
+            key={notebookId}
+            snapshot={initialSnapshot ?? undefined}
+            onMount={handleMount}
+            autoFocus
+          />
+        )}
       </main>
     </div>
   )
