@@ -1,5 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Tldraw, Editor, TLStoreSnapshot, DefaultColorStyle } from 'tldraw'
+import {
+  Tldraw,
+  Editor,
+  TLStoreSnapshot,
+  DefaultColorStyle,
+  DefaultFontStyle,
+  DefaultTextAlignStyle,
+  TLDefaultFontStyle,
+  TLDefaultTextAlignStyle,
+} from 'tldraw'
 import {
   Check,
   Edit2,
@@ -12,6 +21,7 @@ import {
   Menu,
   LayoutGrid,
   Paintbrush,
+  Type,
 } from 'lucide-react'
 import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
 import { BrushController } from './BrushController'
@@ -43,19 +53,26 @@ export function NotebookCanvas({
 
   // Continuous Brush & Color controls (1 - 100%)
   const [isBrushPanelOpen, setIsBrushPanelOpen] = useState(false)
+  const [stylePanelTab, setStylePanelTab] = useState<'brush' | 'text'>('brush')
   const [brushThickness, setBrushThickness] = useState(12)
   const [brushOpacity, setBrushOpacity] = useState(100)
   const [brushColor, setBrushColor] = useState('black')
+  const [selectedFont, setSelectedFont] = useState<TLDefaultFontStyle>('sans')
+  const [selectedAlign, setSelectedAlign] = useState<TLDefaultTextAlignStyle>('start')
 
   const editorRef = useRef<Editor | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const thicknessRef = useRef(brushThickness)
   const opacityRef = useRef(brushOpacity)
   const colorRef = useRef(brushColor)
+  const fontRef = useRef(selectedFont)
+  const alignRef = useRef(selectedAlign)
 
   thicknessRef.current = brushThickness
   opacityRef.current = brushOpacity
   colorRef.current = brushColor
+  fontRef.current = selectedFont
+  alignRef.current = selectedAlign
 
   // Sync internal title when prop changes
   useEffect(() => {
@@ -122,11 +139,32 @@ export function NotebookCanvas({
       return shape
     })
 
-    // 2. Set initial continuous opacity (1% - 100%) and color
+    // 2. Set initial continuous opacity, color, font, and text alignment
     editor.setOpacityForNextShapes(opacityRef.current / 100)
     editor.setStyleForNextShapes(DefaultColorStyle, colorRef.current as any)
+    editor.setStyleForNextShapes(DefaultFontStyle, fontRef.current)
+    editor.setStyleForNextShapes(DefaultTextAlignStyle, alignRef.current)
 
-    // 3. Listen to changes in the store for auto-saving
+    // 3. Listen to selection changes to auto-detect text tool / text selection
+    editor.on('change', () => {
+      const selected = editor.getSelectedShapes()
+      const hasText = selected.some((s) => s.type === 'text')
+      const toolId = editor.getCurrentToolId()
+
+      if (hasText || toolId === 'text') {
+        const textShape = selected.find((s) => s.type === 'text')
+        if (textShape && textShape.props) {
+          if ('font' in textShape.props) {
+            setSelectedFont(textShape.props.font as TLDefaultFontStyle)
+          }
+          if ('textAlign' in textShape.props) {
+            setSelectedAlign(textShape.props.textAlign as TLDefaultTextAlignStyle)
+          }
+        }
+      }
+    })
+
+    // 4. Listen to changes in the store for auto-saving
     const unlisten = editor.store.listen(() => {
       setSaveStatus('saving')
       if (debounceRef.current) {
@@ -149,6 +187,24 @@ export function NotebookCanvas({
       unlisten()
     }
   }
+
+  const openBrushPanel = (tab: 'brush' | 'text') => {
+    if (isBrushPanelOpen && stylePanelTab === tab) {
+      setIsBrushPanelOpen(false)
+    } else {
+      setStylePanelTab(tab)
+      setIsBrushPanelOpen(true)
+    }
+  }
+
+  const fontLabel =
+    selectedFont === 'sans'
+      ? 'Sans'
+      : selectedFont === 'serif'
+      ? 'Serif'
+      : selectedFont === 'mono'
+      ? 'Mono'
+      : 'Draw'
 
   return (
     <div className="flex flex-col w-full h-full bg-white select-none relative">
@@ -235,45 +291,54 @@ export function NotebookCanvas({
           )}
         </div>
 
-        {/* Right side: Brush Controls, Save indicator & Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Custom Brush Controller Toggle (1-100% controls) */}
+        {/* Right side: Brush & Font Controls, Save indicator & Actions */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Kuas Controller Toggle */}
           <button
-            onClick={() => setIsBrushPanelOpen(!isBrushPanelOpen)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
-              isBrushPanelOpen
+            onClick={() => openBrushPanel('brush')}
+            className={`flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border transition-colors ${
+              isBrushPanelOpen && stylePanelTab === 'brush'
                 ? 'bg-zinc-900 text-white border-zinc-900'
                 : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border-zinc-200'
             }`}
-            title="Atur Ketebalan (1-100%) dan Kepekatan Warna (1-100%)"
+            title="Atur Ketebalan Kuas & Warna"
           >
             <Paintbrush className="w-3.5 h-3.5" />
-            <div className="flex items-center gap-1">
-              <span className="hidden sm:inline">Kuas:</span>
-              <span className="font-semibold">{brushThickness}%</span>
-              <span className="text-zinc-400">|</span>
-              <span className="font-semibold">{brushOpacity}%</span>
-            </div>
+            <span className="font-semibold">{brushThickness}%</span>
+          </button>
+
+          {/* Font & Teks Controller Toggle */}
+          <button
+            onClick={() => openBrushPanel('text')}
+            className={`flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border transition-colors ${
+              isBrushPanelOpen && stylePanelTab === 'text'
+                ? 'bg-zinc-900 text-white border-zinc-900'
+                : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border-zinc-200'
+            }`}
+            title="Ganti Jenis Font & Gaya Teks"
+          >
+            <Type className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline font-semibold">{fontLabel}</span>
           </button>
 
           {/* Status Indicator */}
-          <div className="flex items-center gap-1 text-xs text-zinc-500">
+          <div className="flex items-center gap-1 text-xs text-zinc-500 ml-1">
             {saveStatus === 'saving' && (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600" />
-                <span className="hidden sm:inline">Menyimpan...</span>
+                <span className="hidden md:inline">Menyimpan...</span>
               </>
             )}
             {saveStatus === 'saved' && (
               <>
                 <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="hidden sm:inline text-zinc-600">Tersimpan</span>
+                <span className="hidden md:inline text-zinc-600">Tersimpan</span>
               </>
             )}
             {saveStatus === 'error' && (
               <>
                 <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                <span className="hidden sm:inline text-red-600">Gagal simpan</span>
+                <span className="hidden md:inline text-red-600">Gagal simpan</span>
               </>
             )}
           </div>
@@ -290,17 +355,22 @@ export function NotebookCanvas({
         </div>
       </header>
 
-      {/* Floating Brush Controller Panel */}
+      {/* Floating Brush & Text Style Controller Panel */}
       <BrushController
         editor={editorRef.current}
         isOpen={isBrushPanelOpen}
         onClose={() => setIsBrushPanelOpen(false)}
+        initialTab={stylePanelTab}
         thickness={brushThickness}
         opacity={brushOpacity}
         selectedColor={brushColor}
+        selectedFont={selectedFont}
+        selectedAlign={selectedAlign}
         onThicknessChange={(t) => setBrushThickness(t)}
         onOpacityChange={(o) => setBrushOpacity(o)}
         onColorChange={(c) => setBrushColor(c)}
+        onFontChange={(f) => setSelectedFont(f)}
+        onAlignChange={(a) => setSelectedAlign(a)}
       />
 
       {/* Main Canvas Area */}
@@ -316,7 +386,7 @@ export function NotebookCanvas({
             snapshot={initialSnapshot ?? undefined}
             onMount={handleMount}
             components={{
-              // Hide default S/M/L/XL style panel in favor of continuous 1-100% controls
+              // Hide default S/M/L/XL style panel in favor of continuous 1-100% controls and clean font selector
               StylePanel: null,
             }}
             autoFocus
