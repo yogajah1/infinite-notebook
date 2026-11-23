@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Tldraw, Editor, TLStoreSnapshot } from 'tldraw'
+import { Tldraw, Editor, TLStoreSnapshot, DefaultColorStyle } from 'tldraw'
 import {
   Check,
   Edit2,
@@ -11,8 +11,10 @@ import {
   AlertCircle,
   Menu,
   LayoutGrid,
+  Paintbrush,
 } from 'lucide-react'
 import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
+import { BrushController } from './BrushController'
 
 interface NotebookCanvasProps {
   notebookId: string
@@ -39,8 +41,21 @@ export function NotebookCanvas({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('saved')
   const [initialSnapshot, setInitialSnapshot] = useState<TLStoreSnapshot | null | undefined>(undefined)
 
+  // Continuous Brush & Color controls (1 - 100%)
+  const [isBrushPanelOpen, setIsBrushPanelOpen] = useState(false)
+  const [brushThickness, setBrushThickness] = useState(12)
+  const [brushOpacity, setBrushOpacity] = useState(100)
+  const [brushColor, setBrushColor] = useState('black')
+
   const editorRef = useRef<Editor | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const thicknessRef = useRef(brushThickness)
+  const opacityRef = useRef(brushOpacity)
+  const colorRef = useRef(brushColor)
+
+  thicknessRef.current = brushThickness
+  opacityRef.current = brushOpacity
+  colorRef.current = brushColor
 
   // Sync internal title when prop changes
   useEffect(() => {
@@ -98,7 +113,20 @@ export function NotebookCanvas({
     editorRef.current = editor
     editor.focus()
 
-    // Listen to changes in the store for auto-saving
+    // 1. Intercept newly created shapes to inject continuous thickness (scale)
+    editor.store.sideEffects.registerBeforeCreateHandler('shape', (shape) => {
+      if (shape.props && 'scale' in shape.props) {
+        const scale = 0.2 + (thicknessRef.current / 100) * 7.8
+        shape.props.scale = scale
+      }
+      return shape
+    })
+
+    // 2. Set initial continuous opacity (1% - 100%) and color
+    editor.setOpacityForNextShapes(opacityRef.current / 100)
+    editor.setStyleForNextShapes(DefaultColorStyle, colorRef.current as any)
+
+    // 3. Listen to changes in the store for auto-saving
     const unlisten = editor.store.listen(() => {
       setSaveStatus('saving')
       if (debounceRef.current) {
@@ -123,9 +151,9 @@ export function NotebookCanvas({
   }
 
   return (
-    <div className="flex flex-col w-full h-full bg-white select-none">
+    <div className="flex flex-col w-full h-full bg-white select-none relative">
       {/* Top Bar - No Slop UI Standard */}
-      <header className="h-12 border-b border-zinc-200 px-3 sm:px-4 flex items-center justify-between bg-white z-10 shrink-0">
+      <header className="h-12 border-b border-zinc-200 px-3 sm:px-4 flex items-center justify-between bg-white z-20 shrink-0">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           {onToggleSidebar && (
             <button
@@ -207,26 +235,45 @@ export function NotebookCanvas({
           )}
         </div>
 
-        {/* Right side: Save indicator & Actions */}
-        <div className="flex items-center gap-3">
+        {/* Right side: Brush Controls, Save indicator & Actions */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Custom Brush Controller Toggle (1-100% controls) */}
+          <button
+            onClick={() => setIsBrushPanelOpen(!isBrushPanelOpen)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+              isBrushPanelOpen
+                ? 'bg-zinc-900 text-white border-zinc-900'
+                : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border-zinc-200'
+            }`}
+            title="Atur Ketebalan (1-100%) dan Kepekatan Warna (1-100%)"
+          >
+            <Paintbrush className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1">
+              <span className="hidden sm:inline">Kuas:</span>
+              <span className="font-semibold">{brushThickness}%</span>
+              <span className="text-zinc-400">|</span>
+              <span className="font-semibold">{brushOpacity}%</span>
+            </div>
+          </button>
+
           {/* Status Indicator */}
-          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+          <div className="flex items-center gap-1 text-xs text-zinc-500">
             {saveStatus === 'saving' && (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600" />
-                <span className="hidden sm:inline">Menyimpan ke IndexedDB...</span>
+                <span className="hidden sm:inline">Menyimpan...</span>
               </>
             )}
             {saveStatus === 'saved' && (
               <>
                 <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="hidden sm:inline text-zinc-600">Tersimpan lokal</span>
+                <span className="hidden sm:inline text-zinc-600">Tersimpan</span>
               </>
             )}
             {saveStatus === 'error' && (
               <>
                 <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                <span className="hidden sm:inline text-red-600">Gagal menyimpan</span>
+                <span className="hidden sm:inline text-red-600">Gagal simpan</span>
               </>
             )}
           </div>
@@ -243,7 +290,20 @@ export function NotebookCanvas({
         </div>
       </header>
 
-      {/* Main Canvas Area with Key to reload when notebookId changes */}
+      {/* Floating Brush Controller Panel */}
+      <BrushController
+        editor={editorRef.current}
+        isOpen={isBrushPanelOpen}
+        onClose={() => setIsBrushPanelOpen(false)}
+        thickness={brushThickness}
+        opacity={brushOpacity}
+        selectedColor={brushColor}
+        onThicknessChange={(t) => setBrushThickness(t)}
+        onOpacityChange={(o) => setBrushOpacity(o)}
+        onColorChange={(c) => setBrushColor(c)}
+      />
+
+      {/* Main Canvas Area */}
       <main className="flex-1 w-full relative overflow-hidden bg-zinc-50">
         {initialSnapshot === undefined ? (
           <div className="flex items-center justify-center w-full h-full text-zinc-500 text-sm gap-2">
@@ -255,6 +315,10 @@ export function NotebookCanvas({
             key={notebookId}
             snapshot={initialSnapshot ?? undefined}
             onMount={handleMount}
+            components={{
+              // Hide default S/M/L/XL style panel in favor of continuous 1-100% controls
+              StylePanel: null,
+            }}
             autoFocus
           />
         )}
