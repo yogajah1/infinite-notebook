@@ -9,6 +9,8 @@ import {
   CloudCheck,
   Loader2,
   AlertCircle,
+  Menu,
+  LayoutGrid,
 } from 'lucide-react'
 import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
 
@@ -18,6 +20,8 @@ interface NotebookCanvasProps {
   tags?: string[]
   onTitleChange?: (newTitle: string) => void
   onBack?: () => void
+  onToggleSidebar?: () => void
+  onOpenDashboard?: () => void
 }
 
 export function NotebookCanvas({
@@ -26,6 +30,8 @@ export function NotebookCanvas({
   tags = [],
   onTitleChange,
   onBack,
+  onToggleSidebar,
+  onOpenDashboard,
 }: NotebookCanvasProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [currentTitle, setCurrentTitle] = useState(title)
@@ -120,7 +126,27 @@ export function NotebookCanvas({
     <div className="flex flex-col w-full h-full bg-white select-none">
       {/* Top Bar - No Slop UI Standard */}
       <header className="h-12 border-b border-zinc-200 px-3 sm:px-4 flex items-center justify-between bg-white z-10 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          {onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="p-1.5 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors mr-0.5"
+              title="Menu Daftar Catatan"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          )}
+
+          {onOpenDashboard && (
+            <button
+              onClick={onOpenDashboard}
+              className="p-1.5 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors mr-1 hidden sm:inline-flex"
+              title="Buka Dashboard"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          )}
+
           {onBack && (
             <button
               onClick={onBack}
