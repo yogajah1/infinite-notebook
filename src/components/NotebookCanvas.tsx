@@ -185,6 +185,9 @@ export function NotebookCanvas({
     editorRef.current = editor
     editor.focus()
 
+    // Ensure Focus Mode and Readonly are disabled so the bottom toolbar is always visible
+    editor.updateInstanceState({ isFocusMode: false, isReadonly: false })
+
     // 1. Intercept newly created shapes to inject continuous thickness (scale)
     editor.store.sideEffects.registerBeforeCreateHandler('shape', (shape) => {
       if (shape.props && 'scale' in shape.props) {
@@ -483,7 +486,7 @@ export function NotebookCanvas({
       />
 
       {/* Main Canvas Area */}
-      <main className="flex-1 w-full relative overflow-hidden bg-zinc-50">
+      <main className="flex-1 min-h-0 w-full h-full relative overflow-hidden bg-zinc-50">
         {initialSnapshot === undefined ? (
           <div className="flex items-center justify-center w-full h-full text-zinc-500 text-sm gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />

@@ -13,6 +13,7 @@ html, body, #root {
   padding: 0;
   width: 100%;
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   touch-action: none;
 }
@@ -28,11 +29,7 @@ html, body, #root {
 @media print {
   header,
   aside,
-  .no-print,
-  .tlui-toolbar,
-  .tlui-navigation-zone,
-  .tlui-menu-zone,
-  .tlui-help-menu {
+  .no-print {
     display: none !important;
   }
 

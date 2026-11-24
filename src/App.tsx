@@ -85,7 +85,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex w-screen h-screen overflow-hidden bg-white select-none">
+    <div className="flex w-full h-full h-[100dvh] overflow-hidden bg-white select-none">
       {/* Sidebar Navigation */}
       <Sidebar
         isOpen={isSidebarOpen}
