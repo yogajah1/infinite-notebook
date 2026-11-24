@@ -9,13 +9,17 @@
 }
 
 html, body, #root {
+  position: fixed;
+  inset: 0;
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
   height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   touch-action: none;
+  -webkit-overflow-scrolling: auto;
 }
 
 /* Ensure tldraw container fills parent cleanly */

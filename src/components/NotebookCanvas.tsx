@@ -8,6 +8,7 @@ import {
   DefaultTextAlignStyle,
   TLDefaultFontStyle,
   TLDefaultTextAlignStyle,
+  TLUiOverrides,
 } from 'tldraw'
 import {
   Check,
@@ -32,6 +33,13 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { BrushController } from './BrushController'
 import { UserMenu } from './UserMenu'
 import { ExportModal } from './ExportModal'
+
+const uiOverrides: TLUiOverrides = {
+  actions(_editor, actions) {
+    delete actions['toggle-focus-mode']
+    return actions
+  },
+}
 
 interface NotebookCanvasProps {
   notebookId: string
@@ -269,7 +277,7 @@ export function NotebookCanvas({
       : 'Draw'
 
   return (
-    <div className="flex flex-col w-full h-full bg-white select-none relative">
+    <div className="flex flex-col w-full h-full overflow-hidden bg-white select-none relative">
       {/* Top Bar - No Slop UI Standard */}
       <header className="h-12 border-b border-zinc-200 px-3 sm:px-4 flex items-center justify-between bg-white z-20 shrink-0">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -486,7 +494,7 @@ export function NotebookCanvas({
       />
 
       {/* Main Canvas Area */}
-      <main className="flex-1 min-h-0 w-full h-full relative overflow-hidden bg-zinc-50">
+      <main className="flex-1 min-h-0 w-full relative overflow-hidden bg-zinc-50">
         {initialSnapshot === undefined ? (
           <div className="flex items-center justify-center w-full h-full text-zinc-500 text-sm gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-zinc-700" />
@@ -497,6 +505,7 @@ export function NotebookCanvas({
             key={notebookId}
             snapshot={initialSnapshot ?? undefined}
             onMount={handleMount}
+            overrides={uiOverrides}
             components={{
               // Hide default S/M/L/XL style panel in favor of continuous 1-100% controls and clean font selector
               StylePanel: null,
