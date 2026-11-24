@@ -26,8 +26,9 @@ import {
   Download,
   ImagePlus,
 } from 'lucide-react'
-import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
+import { saveCanvasSnapshot } from '../db/notebooks'
 import { syncCanvasSnapshotToCloud, fetchCanvasSnapshotFromCloud } from '../db/sync'
+import { db } from '../db'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { BrushController } from './BrushController'
@@ -88,6 +89,8 @@ export function NotebookCanvas({
   const fontRef = useRef(selectedFont)
   const alignRef = useRef(selectedAlign)
   const userRef = useRef(user)
+  const saveStatusRef = useRef<'idle' | 'saving' | 'saved' | 'error'>('saved')
+  const loadedNotebookIdRef = useRef<string | null>(null)
 
   thicknessRef.current = brushThickness
   opacityRef.current = brushOpacity
@@ -134,32 +137,47 @@ export function NotebookCanvas({
   // Load snapshot from IndexedDB when notebookId changes
   useEffect(() => {
     let isMounted = true
+
+    // If this notebook is already loaded and editor is active, do not reload or unmount!
+    if (loadedNotebookIdRef.current === notebookId && editorRef.current) {
+      return
+    }
+
     setInitialSnapshot(undefined)
     setSaveStatus('idle')
+    saveStatusRef.current = 'idle'
 
     async function loadData() {
       try {
-        let data = await getCanvasSnapshot(notebookId)
+        const localRecord = await db.canvasRecords.get(notebookId)
+        let data: unknown = localRecord ? localRecord.snapshot : null
+        const localUpdatedAt = localRecord ? localRecord.updatedAt : 0
 
-        // Jika online dan terautentikasi, cek apakah cloud memiliki snapshot
-        if (user && navigator.onLine) {
-          const cloud = await fetchCanvasSnapshotFromCloud(user.id, notebookId)
-          if (cloud.snapshot) {
-            data = cloud.snapshot
-            // Simpan snapshot cloud terbaru ke lokal IndexedDB
-            await saveCanvasSnapshot(notebookId, cloud.snapshot)
+        // Jika online dan user terhubung, cek apakah cloud memiliki snapshot yang LEBIH BARU
+        if (userRef.current && navigator.onLine) {
+          try {
+            const cloud = await fetchCanvasSnapshotFromCloud(userRef.current.id, notebookId)
+            if (cloud.snapshot && cloud.updatedAt > localUpdatedAt) {
+              data = cloud.snapshot
+              await saveCanvasSnapshot(notebookId, cloud.snapshot)
+            }
+          } catch (cloudErr) {
+            console.warn('Gagal mengambil data cloud, menggunakan data lokal:', cloudErr)
           }
         }
 
         if (isMounted) {
+          loadedNotebookIdRef.current = notebookId
           setInitialSnapshot((data as TLStoreSnapshot) || null)
           setSaveStatus('saved')
+          saveStatusRef.current = 'saved'
         }
       } catch (err) {
         console.error('Failed to load canvas data:', err)
         if (isMounted) {
           setInitialSnapshot(null)
           setSaveStatus('error')
+          saveStatusRef.current = 'error'
         }
       }
     }
@@ -170,9 +188,36 @@ export function NotebookCanvas({
       isMounted = false
       if (debounceRef.current) {
         clearTimeout(debounceRef.current)
+        // Flush unsaved changes immediately before switching notebook
+        if (editorRef.current) {
+          try {
+            const snapshot = editorRef.current.store.getStoreSnapshot()
+            const now = Date.now()
+            saveCanvasSnapshot(notebookId, snapshot).catch(console.error)
+            if (userRef.current && navigator.onLine) {
+              syncCanvasSnapshotToCloud(userRef.current.id, notebookId, snapshot, now).catch(console.error)
+            }
+          } catch (flushErr) {
+            console.error('Failed to flush snapshot on unmount:', flushErr)
+          }
+        }
       }
     }
-  }, [notebookId, user])
+  }, [notebookId])
+
+  // When user signs in or auth changes, sync current canvas to cloud in background without reloading canvas
+  useEffect(() => {
+    userRef.current = user
+    if (user && editorRef.current && navigator.onLine) {
+      try {
+        const snapshot = editorRef.current.store.getStoreSnapshot()
+        const now = Date.now()
+        syncCanvasSnapshotToCloud(user.id, notebookId, snapshot, now).catch(console.error)
+      } catch (err) {
+        console.error('Background sync to cloud failed:', err)
+      }
+    }
+  }, [user, notebookId])
 
   const handleTitleSubmit = () => {
     setIsEditingTitle(false)
@@ -232,7 +277,10 @@ export function NotebookCanvas({
 
     // 4. Listen to changes in the store for auto-saving
     const unlisten = editor.store.listen(() => {
-      setSaveStatus('saving')
+      if (saveStatusRef.current !== 'saving') {
+        saveStatusRef.current = 'saving'
+        setSaveStatus('saving')
+      }
       if (debounceRef.current) {
         clearTimeout(debounceRef.current)
       }
@@ -245,9 +293,11 @@ export function NotebookCanvas({
           if (userRef.current && navigator.onLine) {
             syncCanvasSnapshotToCloud(userRef.current.id, notebookId, snapshot, now).catch(console.error)
           }
+          saveStatusRef.current = 'saved'
           setSaveStatus('saved')
         } catch (err) {
           console.error('Auto-save to IndexedDB failed:', err)
+          saveStatusRef.current = 'error'
           setSaveStatus('error')
         }
       }, 1000)

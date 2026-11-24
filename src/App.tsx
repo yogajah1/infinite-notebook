@@ -75,9 +75,9 @@ export default function App() {
     }
   }
 
-  if (isLoading || (!activeNotebook && notebooks.length > 0)) {
+  if (isLoading && notebooks.length === 0 && !activeNotebookId) {
     return (
-      <div className="flex items-center justify-center w-screen h-screen bg-white text-zinc-500 gap-2">
+      <div className="flex items-center justify-center w-full h-full h-[100dvh] bg-white text-zinc-500 gap-2">
         <Loader2 className="w-5 h-5 animate-spin text-zinc-800" />
         <span className="text-sm">Menyiapkan buku catatan...</span>
       </div>
@@ -108,16 +108,17 @@ export default function App() {
             onDeleteNotebook={(nb) => setNotebookToDelete(nb)}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
-        ) : activeNotebook ? (
+        ) : activeNotebookId ? (
           <NotebookCanvas
-            notebookId={activeNotebook.id}
-            title={activeNotebook.title}
-            tags={activeNotebook.tags}
+            key={activeNotebookId}
+            notebookId={activeNotebookId}
+            title={activeNotebook?.title || 'Catatan Belajar'}
+            tags={activeNotebook?.tags || []}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             onOpenDashboard={() => setCurrentView('dashboard')}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
             onTitleChange={(newTitle) =>
-              updateNotebook(activeNotebook.id, { title: newTitle })
+              updateNotebook(activeNotebookId, { title: newTitle })
             }
           />
         ) : (
