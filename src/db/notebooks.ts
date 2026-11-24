@@ -1,4 +1,5 @@
 import { db, type Notebook } from './index'
+import { deleteNotebookFromCloud } from './sync'
 
 export async function getAllNotebooks(): Promise<Notebook[]> {
   return await db.notebooks.orderBy('updatedAt').reverse().toArray()
@@ -42,6 +43,7 @@ export async function deleteNotebook(id: string): Promise<void> {
     await db.notebooks.delete(id)
     await db.canvasRecords.delete(id)
   })
+  deleteNotebookFromCloud(id).catch(console.error)
 }
 
 export async function getCanvasSnapshot(notebookId: string): Promise<unknown | null> {

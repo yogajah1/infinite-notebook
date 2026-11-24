@@ -4,7 +4,9 @@ import { Dashboard } from './components/Dashboard'
 import { NotebookCanvas } from './components/NotebookCanvas'
 import { CreateNotebookModal } from './components/CreateNotebookModal'
 import { DeleteConfirmModal } from './components/DeleteConfirmModal'
+import { AuthModal } from './components/AuthModal'
 import { useNotebooks } from './hooks/useNotebooks'
+import { useSync } from './hooks/useSync'
 import type { Notebook } from './db'
 import { Loader2 } from 'lucide-react'
 
@@ -18,10 +20,14 @@ export default function App() {
     ensureDefaultNotebook,
   } = useNotebooks()
 
+  // Background Cloud Sync Engine
+  useSync()
+
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null)
   const [currentView, setCurrentView] = useState<'canvas' | 'dashboard'>('canvas')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [notebookToDelete, setNotebookToDelete] = useState<Notebook | null>(null)
 
   // Initialize with the most recent or default notebook
@@ -100,6 +106,7 @@ export default function App() {
             onSelectNotebook={handleSelectNotebook}
             onOpenCreateModal={() => setIsCreateModalOpen(true)}
             onDeleteNotebook={(nb) => setNotebookToDelete(nb)}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
         ) : activeNotebook ? (
           <NotebookCanvas
@@ -108,6 +115,7 @@ export default function App() {
             tags={activeNotebook.tags}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             onOpenDashboard={() => setCurrentView('dashboard')}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
             onTitleChange={(newTitle) =>
               updateNotebook(activeNotebook.id, { title: newTitle })
             }
@@ -137,6 +145,11 @@ export default function App() {
         title={notebookToDelete?.title || ''}
         onClose={() => setNotebookToDelete(null)}
         onConfirm={handleConfirmDelete}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
       />
     </div>
   )

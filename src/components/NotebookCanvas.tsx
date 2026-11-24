@@ -24,7 +24,10 @@ import {
   Type,
 } from 'lucide-react'
 import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
+import { syncCanvasSnapshotToCloud, fetchCanvasSnapshotFromCloud } from '../db/sync'
+import { useAuth } from '../contexts/AuthContext'
 import { BrushController } from './BrushController'
+import { UserMenu } from './UserMenu'
 
 interface NotebookCanvasProps {
   notebookId: string
@@ -34,6 +37,7 @@ interface NotebookCanvasProps {
   onBack?: () => void
   onToggleSidebar?: () => void
   onOpenDashboard?: () => void
+  onOpenAuthModal?: () => void
 }
 
 export function NotebookCanvas({
@@ -44,7 +48,9 @@ export function NotebookCanvas({
   onBack,
   onToggleSidebar,
   onOpenDashboard,
+  onOpenAuthModal,
 }: NotebookCanvasProps) {
+  const { user } = useAuth()
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [currentTitle, setCurrentTitle] = useState(title)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -67,12 +73,14 @@ export function NotebookCanvas({
   const colorRef = useRef(brushColor)
   const fontRef = useRef(selectedFont)
   const alignRef = useRef(selectedAlign)
+  const userRef = useRef(user)
 
   thicknessRef.current = brushThickness
   opacityRef.current = brushOpacity
   colorRef.current = brushColor
   fontRef.current = selectedFont
   alignRef.current = selectedAlign
+  userRef.current = user
 
   // Sync internal title when prop changes
   useEffect(() => {
@@ -87,13 +95,24 @@ export function NotebookCanvas({
 
     async function loadData() {
       try {
-        const data = await getCanvasSnapshot(notebookId)
+        let data = await getCanvasSnapshot(notebookId)
+
+        // Jika online dan terautentikasi, cek apakah cloud memiliki snapshot
+        if (user && navigator.onLine) {
+          const cloud = await fetchCanvasSnapshotFromCloud(user.id, notebookId)
+          if (cloud.snapshot) {
+            data = cloud.snapshot
+            // Simpan snapshot cloud terbaru ke lokal IndexedDB
+            await saveCanvasSnapshot(notebookId, cloud.snapshot)
+          }
+        }
+
         if (isMounted) {
           setInitialSnapshot((data as TLStoreSnapshot) || null)
           setSaveStatus('saved')
         }
       } catch (err) {
-        console.error('Failed to load canvas data from IndexedDB:', err)
+        console.error('Failed to load canvas data:', err)
         if (isMounted) {
           setInitialSnapshot(null)
           setSaveStatus('error')
@@ -109,7 +128,7 @@ export function NotebookCanvas({
         clearTimeout(debounceRef.current)
       }
     }
-  }, [notebookId])
+  }, [notebookId, user])
 
   const handleTitleSubmit = () => {
     setIsEditingTitle(false)
@@ -174,7 +193,11 @@ export function NotebookCanvas({
       debounceRef.current = setTimeout(async () => {
         try {
           const snapshot = editor.store.getStoreSnapshot()
+          const now = Date.now()
           await saveCanvasSnapshot(notebookId, snapshot)
+          if (userRef.current && navigator.onLine) {
+            syncCanvasSnapshotToCloud(userRef.current.id, notebookId, snapshot, now).catch(console.error)
+          }
           setSaveStatus('saved')
         } catch (err) {
           console.error('Auto-save to IndexedDB failed:', err)
@@ -352,6 +375,11 @@ export function NotebookCanvas({
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
+
+          <div className="h-4 w-[1px] bg-zinc-200" />
+
+          {/* User Account & Cloud Sync Menu */}
+          <UserMenu onOpenAuthModal={onOpenAuthModal || (() => {})} />
         </div>
       </header>
 

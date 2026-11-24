@@ -10,12 +10,14 @@ import {
 } from 'lucide-react'
 import type { Notebook } from '../db'
 import { formatRelativeTime } from '../utils/date'
+import { UserMenu } from './UserMenu'
 
 interface DashboardProps {
   notebooks: Notebook[]
   onSelectNotebook: (id: string) => void
   onOpenCreateModal: () => void
   onDeleteNotebook: (notebook: Notebook) => void
+  onOpenAuthModal?: () => void
 }
 
 export function Dashboard({
@@ -23,6 +25,7 @@ export function Dashboard({
   onSelectNotebook,
   onOpenCreateModal,
   onDeleteNotebook,
+  onOpenAuthModal,
 }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedTag, setSelectedTag] = useState<string>('all')
@@ -53,13 +56,16 @@ export function Dashboard({
             </p>
           </div>
 
-          <button
-            onClick={onOpenCreateModal}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium rounded-md transition-colors shrink-0 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Buat Notebook Baru</span>
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <UserMenu onOpenAuthModal={onOpenAuthModal || (() => {})} />
+            <button
+              onClick={onOpenCreateModal}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium rounded-md transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Buat Notebook Baru</span>
+            </button>
+          </div>
         </div>
 
         {/* Filter & Search Bar */}
