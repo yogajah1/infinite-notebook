@@ -23,10 +23,12 @@ import {
   Paintbrush,
   Type,
   Download,
+  ImagePlus,
 } from 'lucide-react'
 import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
 import { syncCanvasSnapshotToCloud, fetchCanvasSnapshotFromCloud } from '../db/sync'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { BrushController } from './BrushController'
 import { UserMenu } from './UserMenu'
 import { ExportModal } from './ExportModal'
@@ -69,6 +71,7 @@ export function NotebookCanvas({
   const [selectedFont, setSelectedFont] = useState<TLDefaultFontStyle>('sans')
   const [selectedAlign, setSelectedAlign] = useState<TLDefaultTextAlignStyle>('start')
 
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<Editor | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const thicknessRef = useRef(brushThickness)
@@ -84,6 +87,36 @@ export function NotebookCanvas({
   fontRef.current = selectedFont
   alignRef.current = selectedAlign
   userRef.current = user
+
+  const handleInsertImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0 || !editorRef.current) return
+
+    const fileList = Array.from(files)
+    try {
+      const centerPoint = editorRef.current.getViewportPageBounds().center
+      await editorRef.current.putExternalContent({
+        type: 'files',
+        files: fileList,
+        point: centerPoint,
+      })
+
+      // Cadangkan juga ke Supabase Storage jika terhubung akun
+      if (userRef.current && isSupabaseConfigured && navigator.onLine) {
+        for (const file of fileList) {
+          const ext = file.name.split('.').pop() || 'png'
+          const path = `${userRef.current.id}/${notebookId}/${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${ext}`
+          supabase.storage.from('notebook-assets').upload(path, file).catch(console.error)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to insert image:', err)
+    }
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+  }
 
   // Sync internal title when prop changes
   useEffect(() => {
@@ -346,6 +379,25 @@ export function NotebookCanvas({
             <Type className="w-3.5 h-3.5" />
             <span className="hidden sm:inline font-semibold">{fontLabel}</span>
           </button>
+
+          {/* Sisipkan Gambar (Kamera / Galeri / File) */}
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md border bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border-zinc-200 transition-colors"
+            title="Sisipkan Gambar dari Galeri atau Kamera"
+          >
+            <ImagePlus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline font-semibold">Gambar</span>
+          </button>
+
+          <input
+            type="file"
+            ref={imageInputRef}
+            onChange={handleInsertImage}
+            accept="image/*"
+            multiple
+            className="hidden"
+          />
 
           {/* Status Indicator */}
           <div className="flex items-center gap-1 text-xs text-zinc-500 ml-1">
