@@ -22,12 +22,14 @@ import {
   LayoutGrid,
   Paintbrush,
   Type,
+  Download,
 } from 'lucide-react'
 import { getCanvasSnapshot, saveCanvasSnapshot } from '../db/notebooks'
 import { syncCanvasSnapshotToCloud, fetchCanvasSnapshotFromCloud } from '../db/sync'
 import { useAuth } from '../contexts/AuthContext'
 import { BrushController } from './BrushController'
 import { UserMenu } from './UserMenu'
+import { ExportModal } from './ExportModal'
 
 interface NotebookCanvasProps {
   notebookId: string
@@ -54,6 +56,7 @@ export function NotebookCanvas({
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [currentTitle, setCurrentTitle] = useState(title)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('saved')
   const [initialSnapshot, setInitialSnapshot] = useState<TLStoreSnapshot | null | undefined>(undefined)
 
@@ -368,6 +371,16 @@ export function NotebookCanvas({
 
           <div className="h-4 w-[1px] bg-zinc-200" />
 
+          {/* Ekspor & Backup */}
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-zinc-700 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200/80 rounded transition-colors"
+            title="Ekspor & Backup Catatan"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Ekspor</span>
+          </button>
+
           <button
             onClick={toggleFullscreen}
             className="p-1.5 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded transition-colors"
@@ -399,6 +412,22 @@ export function NotebookCanvas({
         onColorChange={(c) => setBrushColor(c)}
         onFontChange={(f) => setSelectedFont(f)}
         onAlignChange={(a) => setSelectedAlign(a)}
+      />
+
+      {/* Export & Backup Modal */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        editor={editorRef.current}
+        notebook={{
+          id: notebookId,
+          title: currentTitle,
+          tags,
+        }}
+        onTitleChange={(newTitle) => {
+          setCurrentTitle(newTitle)
+          if (onTitleChange) onTitleChange(newTitle)
+        }}
       />
 
       {/* Main Canvas Area */}
